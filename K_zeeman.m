@@ -6,7 +6,7 @@ function [out,hF1,hF2,hF3]=K_zeeman
 % Output the eigen energies for a variety of magnetic fields Bvec. The
 % output structure "out" is assigned the eigen values
 out=struct;
-Bvec=linspace(0,1000,1E4);
+Bvec=linspace(0,500,1E4);
 % Bvec = [Bvec 1e5];
 Bvec(1)=[];
 out.B=Bvec;
@@ -168,33 +168,53 @@ vp32=zeros(size(Hp32(0),1),size(Hp32(0),1),length(Bvec));
 % Iterate over all magnetic fields
 for kk=1:length(Bvec)
     % Find the hamiltonians
-
     Hs12_mat=Hs12(Bvec(kk));
     Hp12_mat=Hp12(Bvec(kk));
-    Hp32_mat=Hp32(Bvec(kk));
-    
+    Hp32_mat=Hp32(Bvec(kk));    
     % 4S 1/2
     [v,d]=eig(Hs12_mat);
-     [d,inds]=sort(diag(d));v=v(:,inds);        
-    Es12(:,kk)=d;   
+    [d,inds]=sort(diag(d));v=v(:,inds);        
+    Es12(:,kk)=d;  
 
-    vs12(:,:,kk)=v;      
-    
-    
+    % Fix Eigen Vectors to have same phase
+    for cc=1:size(v,2)
+        ind=find(abs(v(:,cc))~=0,1);
+        v(:,cc)=v(:,cc)*sign(v(ind,cc));
+    end
+
+    vs12(:,:,kk)=v;        
     
     % 4P 1/2
     [v,d]=eig(Hp12_mat);
     [d,inds]=sort(diag(d));v=v(:,inds);    
     Ep12(:,kk)=d;
-    vp12(:,:,kk)=v;    
-    
+    for cc=1:size(v,2)
+        ind=find(abs(v(:,cc))~=0,1);
+        v(:,cc)=v(:,cc)*sign(v(ind,cc));
+    end
+    vp12(:,:,kk)=v;        
     % 4P 3/2
     [v,d]=eig(Hp32_mat);
     [d,inds]=sort(diag(d));v=v(:,inds);    
     Ep32(:,kk)=d;
-    vp32(:,:,kk)=v;
-    
-  
+    for cc=1:size(v,2)
+        ind=find(abs(v(:,cc))~=0,1);
+        v(:,cc)=v(:,cc)*sign(v(ind,cc));
+    end
+
+    % Match this eigenvector the previous
+    if kk>1
+        V_last = vp32(:,:,kk-1);% Last set of eigenvectors
+        for cc=1:size(v,2)
+            V = repmat(v(:,cc),[1 size(v,2)]);
+            overlaps = abs(sum(V.*V_last,1)).^2;
+            [~,ii]=sort(overlaps,'descend');
+            vp32(:,ii(1),kk)=v(:,cc);   
+            Ep32(ii(1),kk)=d(cc);
+        end
+    else
+        vp32(:,:,kk)=v;    
+    end
 end
 
 % Calculate mI and mJ
@@ -273,10 +293,6 @@ out.mImJ_P32 = mImJ_P32;
 
 out.basis_mImJ_P32 = basis_mImJ_P32;
 
-% 
-% out.JiIz_P32 = JiIz_P32; % Iz operator for 4P_3/2
-% out.JzIi_P32 = JzIi_P32;  % Jz operator for 4P_3/2
-
 %% Plot Results
 % Plot the results.  Limits are chosen to match Tiecke. Also adding labels
 % for F, mJ and the zero field splittings.
@@ -285,12 +301,18 @@ hF1=figure(1000);
 clf
 set(hF1,'color','w');
 hold on
+co=get(gca,'colororder');
 for kk=1:size(Es12,1)
-   plot(Bvec,Es12(kk,:),'k-','linewidth',1) 
+   p=plot(Bvec,Es12(kk,:),'k-','linewidth',1);
+   if kk==1
+        p.Color=co(1,:);
+   elseif kk==10
+        p.Color=co(2,:);
+   end
 end
-xlim([0 1000]);
-ylim([-2000 2000]);
-hF1.Position(3:4)=[600 400];
+xlim([0 230]);
+ylim([-1100 1100]);
+hF1.Position=[10 50 600 300];
 set(gca,'fontsize',12,'fontname','times','xgrid','on',...
     'box','on','ygrid','on');
 xlabel('field (Gauss)');
@@ -298,14 +320,17 @@ ylabel('energy (MHz)');
 text(0.02,.98,'$^{40}\mathrm{K}~4\mathrm{S}_{1/2}$','interpreter','latex','units','normalized',...
     'verticalalignment','top','fontsize',18);
 
-text(1.005,.85,'$m_\mathrm{J}=+\frac{1}{2}$','interpreter','latex','fontsize',10,'units','normalized',...
+
+text(1.005,1,'$m_J$','interpreter','latex','fontsize',12,'units','normalized',...
     'horizontalalignment','left');
-text(1.005,.15,'$m_\mathrm{J}=-\frac{1}{2}$','interpreter','latex','fontsize',10,'units','normalized',...
+text(1.005,.85,'$+\frac{1}{2}$','interpreter','latex','fontsize',16,'units','normalized',...
+    'horizontalalignment','left');
+text(1.005,.15,'$-\frac{1}{2}$','interpreter','latex','fontsize',16,'units','normalized',...
     'horizontalalignment','left');
 
-text(.15,.8,'$F=7/2$','interpreter','latex','fontsize',10,'units','normalized',...
-    'horizontalalignment','left');
-text(.15,.2,'$F=9/2$','interpreter','latex','fontsize',10,'units','normalized',...
+text(10,650,'$F=7/2$','interpreter','latex','fontsize',14,'units','data',...
+    'horizontalalignment','left','verticalalignment','cap');
+text(10,-400,'$F=9/2$','interpreter','latex','fontsize',14,'units','data',...
     'horizontalalignment','left');
 
 text(0,Es12(1,1),[num2str(Es12(1,1),'%.1f') ' '],'fontsize',7,'units','data',...
@@ -314,74 +339,87 @@ text(0,Es12(end,1),[num2str(Es12(end,1),'%.1f') ' '],'fontsize',7,'units','data'
     'horizontalalignment','right');
 
 
-text(.78,.04,['$m_I = ' num2str(mImJ_S12(1,1)) '$'],'fontsize',8,'units','normalized',...
-    'horizontalalignment','right','interpreter','latex');
-% text(.78,.4,['$m_I = ' num2str(mImJ_S12(9,1)) '$'],'fontsize',8,'units','normalized',...
-%     'horizontalalignment','right','interpreter','latex');
+text(.5,1.01,'$m_I$','interpreter','latex','fontsize',12,'units','normalized',...
+    'horizontalalignment','center','verticalalignment','cap');
+
+text(.5,.91,['$' num2str(round(mImJ_S12(18,1)),'%+d') '$'],'fontsize',10,'units','normalized',...
+    'horizontalalignment','center','interpreter','latex');
+text(.5,.73,['$' num2str(round(mImJ_S12(11,1)),'%+d') '$'],'fontsize',10,'units','normalized',...
+    'horizontalalignment','center','interpreter','latex');
+
+text(.5,.35,['$' num2str(mImJ_S12(10,1),'%+d') '$'],'fontsize',10,'units','normalized',...
+    'horizontalalignment','center','interpreter','latex');
+text(.5,.13,['$' num2str(mImJ_S12(1,1),'%+d') '$'],'fontsize',10,'units','normalized',...
+    'horizontalalignment','center','interpreter','latex');
 
 
-text(.78,.58,['$m_I = ' num2str(mImJ_S12(10,1)) '$'],'fontsize',8,'units','normalized',...
-    'horizontalalignment','right','interpreter','latex');
-% text(.78,.97,['$m_I = ' num2str(mImJ_S12(end,1)) '$'],'fontsize',8,'units','normalized',...
-%     'horizontalalignment','right','interpreter','latex');
-% 4P_1/2
+
+text(75,-760,'$a$','fontsize',14,'units','data',...
+    'horizontalalignment','center','interpreter','latex');
+text(75,-380,'$j$','fontsize',14,'units','data',...
+    'horizontalalignment','center','interpreter','latex');
+
+text(75,530,'$i$','fontsize',14,'units','data',...
+    'horizontalalignment','center','interpreter','latex');
+text(75,870,'$r$','fontsize',14,'units','data',...
+    'horizontalalignment','center','interpreter','latex');
+%% 4P_1/2
 hF2=figure(1001);
 clf
 set(hF2,'color','w');
 hold on
 for kk=1:size(Ep12,1)
-   plot(Bvec,Ep12(kk,:),'k-','linewidth',1) 
+   p=plot(Bvec,Ep12(kk,:),'k-','linewidth',1) 
+  if kk==1
+        p.Color=co(1,:);
+   elseif kk==10
+        p.Color=co(2,:);
+
+   end
 end
-xlim([0 400]);
-ylim([-300 300]);
-hF2.Position(3:4)=[600 400];
+xlim([0 230]);
+ylim([-200 200]);
+hF2.Position=[10 370 600 300];
 set(gca,'fontsize',12,'fontname','times','xgrid','on',...
     'box','on','ygrid','on');
 xlabel('field (Gauss)');
 ylabel('energy (MHz)');
 text(0.02,.98,'$^{40}\mathrm{K}~4\mathrm{P}_{1/2}$','interpreter','latex','units','normalized',...
     'verticalalignment','top','fontsize',18);
-
-text(1.005,.85,'$m_\mathrm{J}=+\frac{1}{2}$','interpreter','latex','fontsize',10,'units','normalized',...
+text(1.005,.85,'$+\frac{1}{2}$','interpreter','latex','fontsize',16,'units','normalized',...
     'horizontalalignment','left');
-text(1.005,.15,'$m_\mathrm{J}=-\frac{1}{2}$','interpreter','latex','fontsize',10,'units','normalized',...
+text(1.005,.15,'$-\frac{1}{2}$','interpreter','latex','fontsize',16,'units','normalized',...
     'horizontalalignment','left');
-
-text(.15,.8,'$F=7/2$','interpreter','latex','fontsize',10,'units','normalized',...
+text(.05,.8,'$F=7/2$','interpreter','latex','fontsize',16,'units','normalized',...
     'horizontalalignment','left');
-text(.15,.2,'$F=9/2$','interpreter','latex','fontsize',10,'units','normalized',...
+text(.05,.2,'$F=9/2$','interpreter','latex','fontsize',16,'units','normalized',...
     'horizontalalignment','left');
-
 text(0,Ep12(1,1),[num2str(Ep12(1,1),'%.1f') ' '],'fontsize',7,'units','data',...
     'horizontalalignment','right');
 text(0,Ep12(end,1)-15,[num2str(Ep12(end,1),'%.1f') ' '],'fontsize',7,'units','data',...
     'horizontalalignment','right');
-
-
-text(.78,.08,['$m_I = ' num2str(mImJ_P12(1,1)) '$'],'fontsize',8,'units','normalized',...
+text(.78,.08,['$m_I = ' num2str(mImJ_P12(1,1),'%+d') '$'],'fontsize',14,'units','normalized',...
     'horizontalalignment','right','interpreter','latex');
-% text(.78,.4,['$m_I = ' num2str(mImJ_P12(9,1)) '$'],'fontsize',8,'units','normalized',...
-%     'horizontalalignment','right','interpreter','latex');
-
-
-text(.78,.58,['$m_I = ' num2str(mImJ_P12(10,1)) '$'],'fontsize',8,'units','normalized',...
+text(.78,.95,['$m_I = ' num2str(round(mImJ_P12(18,1)),'%+d') '$'],'fontsize',14,'units','normalized',...
     'horizontalalignment','right','interpreter','latex');
 
-% text(.78,.9,['$m_I = ' num2str(mImJ_P12(end,1)) '$'],'fontsize',8,'units','normalized',...
-%     'horizontalalignment','right','interpreter','latex');
-
-
-% 4P_3/2
+%% 4P_3/2
 hF3=figure(1002);
 clf
 set(hF3,'color','w');
 hold on
 for kk=1:size(Ep32,1)
-   plot(Bvec,Ep32(kk,:),'k-','linewidth',1) 
+   p=plot(Bvec,Ep32(kk,:),'k-','linewidth',.5) 
+
+    if kk==1
+        p.Color=co(1,:);
+   elseif kk==12
+        p.Color=co(2,:);
+   end
 end
-xlim([0 200]);
-ylim([-400 400]);
-hF3.Position(3:4)=[600 400];
+xlim([0 230]);
+ylim([-800 800]);
+hF3.Position=[610 50 600 600];
 set(gca,'fontsize',12,'fontname','times','xgrid','on',...
     'box','on','ygrid','on');
 xlabel('field (Gauss)');
@@ -389,20 +427,21 @@ ylabel('energy (MHz)');
 text(0.02,.98,'$^{40}\mathrm{K}~4\mathrm{P}_{3/2}$','interpreter','latex','units','normalized',...
     'verticalalignment','top','fontsize',18);
 
-text(.85,.65,'$m_\mathrm{J}=+\frac{1}{2}$','interpreter','latex','fontsize',12,'units','normalized',...
+text(1.005,.65,'$+\frac{1}{2}$','interpreter','latex','fontsize',16,'units','normalized',...
     'horizontalalignment','left');
-text(.85,.35,'$m_\mathrm{J}=-\frac{1}{2}$','interpreter','latex','fontsize',12,'units','normalized',...
-    'horizontalalignment','left');
-
-text(.55,.8,'$m_\mathrm{J}=+\frac{3}{2}$','interpreter','latex','fontsize',12,'units','normalized',...
-    'horizontalalignment','left');
-text(.55,.2,'$m_\mathrm{J}=-\frac{3}{2}$','interpreter','latex','fontsize',12,'units','normalized',...
+text(1.005,.35,'$-\frac{1}{2}$','interpreter','latex','fontsize',16,'units','normalized',...
     'horizontalalignment','left');
 
-text(.15,.8,'$F=5/2$','interpreter','latex','fontsize',10,'units','normalized',...
+text(1.005,.9,'$+\frac{3}{2}$','interpreter','latex','fontsize',16,'units','normalized',...
     'horizontalalignment','left');
-text(.15,.2,'$F=11/2$','interpreter','latex','fontsize',10,'units','normalized',...
+text(1.005,.1,'$-\frac{3}{2}$','interpreter','latex','fontsize',16,'units','normalized',...
     'horizontalalignment','left');
+
+text(2,150,'$F=5/2$','interpreter','latex','fontsize',14,'units','data',...
+    'horizontalalignment','left','verticalalignment','bottom');
+
+text(2,-200,'$F=11/2$','interpreter','latex','fontsize',14,'units','data',...
+    'horizontalalignment','left','verticalalignment','top');
 
 text(-6,Ep32(1,1),[num2str(Ep32(1,1),'%.1f') ' '],'fontsize',7,'units','data',...
     'horizontalalignment','right');
@@ -415,13 +454,13 @@ text(-6,Ep32(end,1)+10,[num2str(Ep32(end,1),'%.1f') ' '],'fontsize',7,'units','d
 
 
 
-text(.35,.15,['$' num2str(mImJ_P32(1,1)) '$'],'fontsize',8,'units','normalized',...
+text(.35,.15,['$m_I=' num2str(0.5*round(2*mImJ_P32(1,1))) '$'],'fontsize',16,'units','normalized',...
     'horizontalalignment','right','interpreter','latex');
-text(.35,.37,['$' num2str(mImJ_P32(10,1)) '$'],'fontsize',8,'units','normalized',...
+text(.35,.37,['$m_I=' num2str(0.5*round(2*mImJ_P32(10,1))) '$'],'fontsize',16,'units','normalized',...
     'horizontalalignment','right','interpreter','latex');
-text(.35,.52,['$' num2str(mImJ_P32(19,1)) '$'],'fontsize',8,'units','normalized',...
+text(.35,.52,['$m_I=' num2str(0.5*round(2*mImJ_P32(19,1))) '$'],'fontsize',16,'units','normalized',...
     'horizontalalignment','right','interpreter','latex');
-text(.35,.65,['$' num2str(mImJ_P32(19,1)) '$'],'fontsize',8,'units','normalized',...
+text(.35,.65,['$m_I=' num2str(0.5*round(2*mImJ_P32(19,1))) '$'],'fontsize',16,'units','normalized',...
     'horizontalalignment','right','interpreter','latex');
 %% Helper functions
 
