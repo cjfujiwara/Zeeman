@@ -1,6 +1,5 @@
-function K_states
+function K_states(out)
 
-[out,hF_S,hF_P1,hF_P3]=K_zeeman;
 
 % Get the magnetic field
 B=out.B;
